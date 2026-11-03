@@ -4,6 +4,8 @@ Detect incoming USDC deposits to a Solana wallet with Helius LaserStream, and cr
 
 At SurfCash, an offramp turned USDC into local money (PIX in Brazil, VietQR in Vietnam). The app had to notice an incoming USDC transfer right away and credit the user one time. Zero times is a lost deposit, which happens if you miss a transaction while the websocket is down. Two times is money out the door, which happens if the stream and a webhook both deliver the same transaction. This repo is a small starter that gets both cases right. It runs on devnet by default.
 
+2-minute demo: https://youtu.be/pibFogVgiNY
+
 ## Quickstart
 
 ```sh
@@ -22,7 +24,7 @@ To see a deposit, get devnet USDC from [faucet.circle.com](https://faucet.circle
 
 To watch a disconnect and recovery, run `bun run demo:kill` (same as `bun run src/demo.ts --kill-after=20`). It cancels the stream 20 seconds in. Send a deposit while it is down. On reconnect the watcher resubscribes from the last saved slot and credits it once.
 
-This is real output from a devnet run. After the deposit above was credited, I moved the saved slot back to before it, started the watcher with `--kill-after=12`, and let it drop and reconnect. Both times the stream replayed the same deposit from the saved slot, and both times it was logged as a duplicate. The balance stayed at 20 USDC and the table kept one row.
+This is real output from a devnet run. After the deposit above was credited, the saved slot was moved back to before it, started the watcher with `--kill-after=12`, and let it drop and reconnect. Both times the stream replayed the same deposit from the saved slot, and both times it was logged as a duplicate. The balance stayed at 20 USDC and the table kept one row.
 
 ```text
 {"msg":"subscribing","fromSlot":518306300,"commitment":"finalized", ...}
@@ -33,6 +35,18 @@ This is real output from a devnet run. After the deposit above was credited, I m
 {"msg":"subscribing","fromSlot":518306300,"commitment":"finalized", ...}
 {"source":"stream","signature":"s32G...p8c","slot":518306376,"action":"duplicate"}
 ```
+
+## Live dashboard
+
+Run `bun run dashboard` and open [127.0.0.1:3000](http://127.0.0.1:3000). One Bun process runs the watcher and serves plain HTML, CSS and JavaScript; SSE delivers live updates. The page loads saved deposits through `/api/state` even if SSE is blocked, retries the connection, and offers light and dark themes.
+
+The Anatomy figure maps the flow to a physical machine: tokens leave the hopper, pass the signature gate, and land in the ledger or a skipped/ignored tray. Its counter and signature stubs use watcher state. **Replay animation** replays the latest recorded deposit visually; it never submits a transaction or changes the ledger. The figure loads independently of the stream, stops offscreen, and respects reduced motion. Rebuild its vendored SVG geometry with `bun design/build-machine.mjs`.
+
+**Balance** is the wallet's current on-chain USDC across its token accounts, read at the configured commitment. It refreshes after every watched transaction, including outgoing transfers, and every 10 seconds while idle or disconnected. If RPC is unavailable, the page shows an unavailable state rather than substituting the deposit total. The deposit ledger still persists independently for deduplication, and Activity shows the latest 10 events.
+
+For the recovery demo, select **Drop stream · 30s**, send devnet USDC to the displayed address during the disconnect, and wait for automatic recovery or select **Reconnect**. Deposits within the replay window are processed from the saved slot; already credited transactions are skipped. **Pause updates** freezes the displayed deposits while the watcher keeps recording. Connection status and recovery controls remain active.
+
+The dashboard listens only on localhost. Set `DASHBOARD_PORT` to change its port and `DROP_HOLD_SECONDS` to change the demo disconnect duration. Wallet keys stay outside this project and are never exposed to the page.
 
 ## Three ways deposit detection usually goes wrong
 
