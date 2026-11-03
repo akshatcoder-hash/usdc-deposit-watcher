@@ -39,6 +39,7 @@
   --m-dot: #e3e8f0;
 }
 
+:root,
 :root[data-theme="light"] {
   color-scheme: light;
   --c-bg: #f2f4f9;

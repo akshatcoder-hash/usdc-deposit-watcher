@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>usdc-deposit-watcher</title>
-<script>document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";</script>
+<meta name="color-scheme" content="light dark">
+<script>try { document.documentElement.dataset.theme = localStorage.getItem("theme") || "light"; } catch (e) { document.documentElement.dataset.theme = "light"; }</script>
 <link rel="stylesheet" href="/tokens.css">
 <style>
   :root {
@@ -22,6 +23,14 @@
   body { margin: 0; min-height: 100dvh; color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
   main { max-width: 1780px; margin: 0 auto; padding: 36px 56px 40px; }
 
+
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .skip { position: absolute; left: 16px; top: -64px; z-index: 5; padding: 10px 16px; border-radius: var(--r-btn); background: var(--panel); color: var(--text); border: 1px solid var(--line-2); font-family: var(--mono); font-size: 15px; transition: top 160ms var(--ease-out); }
+  .skip:focus { top: 12px; }
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .brand h1 { margin: 0; font: inherit; }
+  .load-note { margin: 0; padding: 40px 0; color: var(--muted); font-size: 15px; text-align: center; }
+  .load-note button { margin-left: 8px; }
   header { display: flex; justify-content: space-between; align-items: center; height: 44px; }
   .brand { font-family: var(--mono); font-size: 17px; color: var(--muted); display: flex; align-items: center; gap: 14px; }
   .brand b { color: var(--text); font-weight: 500; }
@@ -35,9 +44,9 @@
   .pill i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; opacity: 0; }
   .pill.live i { background: var(--green); }
   .pill.live i::after { animation: ring 2.4s var(--ease-out) infinite; }
-  .pill.replaying { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); }
+  .pill.replaying { color: var(--amber); border-color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); }
   .pill.replaying i { background: var(--amber); }
-  .pill.dropped { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); }
+  .pill.dropped { color: var(--red); border-color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); }
   .pill.dropped i { background: var(--red); }
   @keyframes ring { 0% { transform: scale(1); opacity: .5; } 70%, 100% { transform: scale(3.2); opacity: 0; } }
 
@@ -135,7 +144,20 @@
   @starting-style { tbody tr { opacity: 0; transform: translateY(-6px); } }
   .empty { padding: 22px 0; color: var(--muted); font-size: 15px; }
 
-  @media (max-width: 1280px) { .grid { grid-template-columns: 1fr; gap: 40px; } main { padding: 28px 24px; } .amount { font-size: 72px; } }
+  @media (max-width: 720px) {
+    main { padding: 16px; }
+    header { flex-wrap: wrap; height: auto; gap: 12px; }
+    .amount { font-size: 52px; gap: 10px; flex-wrap: wrap; } .amount small { font-size: 18px; }
+    .stat b { font-size: 26px; } .stat + .stat { padding-left: 14px; }
+    .foot { flex-direction: column; }
+    .stage { padding: 14px 12px 8px; }
+    th:nth-child(2), td:nth-child(2) { display: none; }
+    table { font-size: 14px; } th { width: auto !important; }
+    .tag { font-size: 12px; }
+  }
+  @media (max-width: 420px) { .amount { font-size: 40px; } .brand { flex-wrap: wrap; } }
+  @media (max-width: 1280px) { .grid { grid-template-columns: minmax(0, 1fr); gap: 40px; } main { padding: 28px 24px; } }
+  @media (min-width: 721px) and (max-width: 1280px) { .amount { font-size: 80px; } }
   @media (prefers-reduced-motion: reduce) {
     .pill.live i::after { animation: none; }
     tbody tr { transition: opacity 160ms ease; }
@@ -146,20 +168,22 @@
 </style>
 </head>
 <body>
-<main>
+<a class="skip" href="#main">Skip to the deposit machine</a>
+<main id="main">
   <header>
-    <div class="brand"><b>usdc-deposit-watcher</b><span class="net" id="net">-</span></div>
-    <div class="head-r"><button class="ghost" id="theme" aria-label="Switch colour theme">Theme</button><div class="pill" id="pill" role="status"><i></i><span id="pill-text">connecting</span></div></div>
+    <div class="brand"><h1><b>usdc-deposit-watcher</b></h1><span class="net" id="net">-</span></div>
+    <div class="head-r"><button class="ghost" id="theme" type="button">Switch to dark</button><div class="pill" id="pill"><i></i><span id="pill-text">connecting</span></div></div>
   </header>
 
   <div class="grid">
     <section>
       <div class="stage" id="stage">
-        <div class="stage-cap"><span>Deposit machine</span><span id="readout">waiting for events</span></div>
+        <div class="stage-cap"><span>Deposit machine</span><span id="readout" aria-hidden="true">waiting for events</span></div>
         <div class="stage-svg" id="machine">
-          <div class="tag" id="tag-credited" data-kind="credited">credited</div>
-          <div class="tag" id="tag-duplicate" data-kind="duplicate">duplicate, skipped</div>
-          <div class="tag" id="tag-ignored" data-kind="ignored">ignored</div>
+          <p class="load-note" id="load-note">Loading the machine drawing</p>
+          <div class="tag" aria-hidden="true" id="tag-credited" data-kind="credited">credited</div>
+          <div class="tag" aria-hidden="true" id="tag-duplicate" data-kind="duplicate">duplicate, skipped</div>
+          <div class="tag" aria-hidden="true" id="tag-ignored" data-kind="ignored">ignored</div>
         </div>
       </div>
       <div class="foot">
@@ -187,13 +211,16 @@
       </div>
 
       <table>
-        <thead><tr><th style="width:96px">Time</th><th style="width:84px">Source</th><th>Signature</th><th class="r" style="width:138px">Amount</th><th class="r" style="width:104px">Action</th></tr></thead>
+        <caption class="sr-only">Last 10 deposit events</caption>
+        <thead><tr><th scope="col" style="width:96px">Time</th><th scope="col" style="width:84px">Source</th><th scope="col">Signature</th><th scope="col" class="r" style="width:138px">Amount</th><th scope="col" class="r" style="width:104px">Action</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty">No events yet. Send USDC to the watched wallet.</div>
     </section>
   </div>
 </main>
+<div class="sr-only" id="announce" role="status" aria-live="polite"></div>
+<noscript><p class="load-note">This dashboard needs JavaScript to show live deposits.</p></noscript>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -331,16 +358,18 @@ function setBalance(v) {
 /* table */
 const hhmmss = (t) => new Date(t).toLocaleTimeString("en-GB");
 const shortSig = (s) => s.slice(0, 4) + "…" + s.slice(-4);
+const announce = (text) => { $("announce").textContent = text; };
 function addRow(e) {
   $("empty").hidden = true;
   const tr = document.createElement("tr");
   const amt = e.action === "ignored" ? "-" : "+" + Number(e.amount).toFixed(6);
   tr.innerHTML = `<td class="muted">${hhmmss(e.t)}</td><td>${e.source}</td>
-    <td><a target="_blank" rel="noreferrer" href="${explorer.base}${e.signature}${explorer.suffix}">${shortSig(e.signature)}</a></td>
+    <td><a target="_blank" rel="noreferrer" title="${e.signature}" aria-label="${shortSig(e.signature)}, open in Solana Explorer in a new tab" href="${explorer.base}${e.signature}${explorer.suffix}">${shortSig(e.signature)}</a></td>
     <td class="r ${e.action === "ignored" ? "muted" : ""}">${amt}</td><td class="r act ${e.action}">${e.action}</td>`;
   $("rows").prepend(tr);
   while ($("rows").children.length > 10) $("rows").lastChild.remove();
   $("readout").textContent = e.action + " " + shortSig(e.signature);
+  announce(({ credited: "Credited ", duplicate: "Skipped duplicate ", ignored: "Ignored transaction " })[e.action] + (e.action === "ignored" ? "" : Number(e.amount).toFixed(2) + " USDC ") + shortSig(e.signature));
 }
 
 /* events can arrive in a burst (a replay): space the coins out so each one is readable */
@@ -361,8 +390,11 @@ function quick(e) {
   if (kind === "credited") { const s = stubCount++ % M.SLOTS; slotOf.set(e.signature, s); setStub(s, true); inFlight = Math.max(0, inFlight - 1); if (!inFlight && latestBalance !== null) setBalance(latestBalance); dialTurn = dialTarget = (credits % 10) / 10; drawNeedle(dialTurn); }
 }
 
+let lastState = null;
 function showStatus(s) {
   clearInterval(countdown);
+  if (s.state !== lastState && lastState !== null) announce({ live: "Stream live", dropped: "Stream dropped, reconnecting", replaying: "Replaying missed slots" }[s.state]);
+  lastState = s.state;
   $("pill").className = "pill " + s.state;
   $("drop").disabled = s.state !== "live";
   $("reconnect").hidden = s.state !== "dropped";
@@ -375,13 +407,27 @@ function showStatus(s) {
 }
 const showStats = (s) => { credits = Math.max(credits, s.credited); $("s-credited").textContent = s.credited; $("s-duplicate").textContent = s.duplicate; $("s-ignored").textContent = s.ignored; };
 
-async function boot() {
-  const [m, markup] = await Promise.all([fetch("/machine.json").then((r) => r.json()), fetch("/machine.svg").then((r) => r.text())]);
-  M = m; $("machine").insertAdjacentHTML("afterbegin", markup); svg = $("machine").querySelector("svg");
-  addEventListener("resize", () => {});
-  drawNeedle(dialTurn);
-  pending.splice(0).forEach(play);
+let booting = null;
+function boot() {
+  if (M) return Promise.resolve();
+  booting ||= Promise.all([
+    fetch("/machine.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }),
+    fetch("/machine.svg").then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); }),
+  ]).then(([m, markup]) => {
+    M = m; $("load-note").remove(); $("machine").insertAdjacentHTML("afterbegin", markup); svg = $("machine").querySelector("svg");
+    drawNeedle(dialTurn);
+    seedStubs(initialSignatures);
+    pending.splice(0).forEach(play);
+  }).catch(() => {
+    booting = null;
+    $("load-note").innerHTML = 'The machine drawing did not load. <button type="button" id="retry">Retry</button>';
+    $("retry").onclick = () => { $("load-note").textContent = "Loading the machine drawing"; boot(); };
+  });
+  return booting;
 }
+let initialSignatures = [];
+function seedStubs(sigs) { for (const sig of sigs) { if (slotOf.has(sig)) continue; const s = stubCount++ % M.SLOTS; slotOf.set(sig, s); setStub(s, true); } }
+boot();
 
 let es;
 function connect() {
@@ -397,19 +443,19 @@ es.addEventListener("snapshot", async (m) => {
   showStatus(d.status);
   credits = d.stats.credited; showStats(d.stats);
   dialTurn = dialTarget = (credits % 10) / 10 + Math.floor(credits / 10);
-  if (!M) await boot();
-  d.signatures.forEach((sig) => { const s = stubCount++ % M.SLOTS; slotOf.set(sig, s); setStub(s, true); });
-  drawNeedle(dialTurn);
+  initialSignatures = d.signatures; if (!M) await boot(); else { seedStubs(d.signatures); drawNeedle(dialTurn); }
 });
 es.addEventListener("tx", (m) => play(JSON.parse(m.data)));
 es.addEventListener("balance", (m) => { latestBalance = Number(JSON.parse(m.data).usdc); if (inFlight === 0) setBalance(latestBalance); });
 es.addEventListener("stats", (m) => { const s = JSON.parse(m.data); $("s-duplicate").textContent = s.duplicate; $("s-ignored").textContent = s.ignored; $("s-credited").textContent = s.credited; });
 es.addEventListener("status", (m) => showStatus(JSON.parse(m.data)));
-es.onerror = () => { (window.__errs ||= []).push([Math.round(performance.now()), es.readyState]); setTimeout(() => { if (es.readyState !== 1) { $("pill").className = "pill dropped"; $("pill-text").textContent = "dashboard server unreachable"; if (es.readyState === 2) connect(); } }, 4000); };
+es.onerror = () => { setTimeout(() => { if (es.readyState !== 1) { $("pill").className = "pill dropped"; $("pill-text").textContent = "dashboard server unreachable"; if (es.readyState === 2) connect(); } }, 4000); };
 }
 connect();
 
-$("theme").onclick = () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = t; localStorage.setItem("theme", t); };
+const themeLabel = () => { $("theme").textContent = document.documentElement.dataset.theme === "dark" ? "Switch to light" : "Switch to dark"; };
+themeLabel();
+$("theme").onclick = () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = t; try { localStorage.setItem("theme", t); } catch (e) {} themeLabel(); };
 $("drop").onclick = () => fetch("/drop", { method: "POST" });
 $("reconnect").onclick = () => fetch("/reconnect", { method: "POST" });
 </script>
