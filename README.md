@@ -14,7 +14,7 @@ bun test
 bun run demo
 ```
 
-To see a deposit, get devnet USDC from [faucet.circle.com](https://faucet.circle.com) (choose Solana Devnet) and send 0.01 USDC to `WATCH_WALLET` from a different wallet you control. The watcher prints one JSON line per event:
+To see a deposit, get devnet USDC from [faucet.circle.com](https://faucet.circle.com) (choose Solana Devnet) and send 0.01 USDC to `WATCH_WALLET` from a different wallet you control. The watcher prints one JSON line per event. A credited deposit looks like this (illustrative values):
 
 ```json
 {"source":"stream","signature":"5mhP...","slot":518304542,"action":"credited","amount":"0.010000"}
@@ -73,7 +73,7 @@ All sources feed the same function, and `creditDeposit()` is the only code that 
 
 ## Config
 
-One switch, `NETWORK`, in `.env`. It selects the stream endpoint, the RPC endpoint and the USDC mint together ([`src/config.ts:6`](src/config.ts#L6)).
+One switch, `NETWORK`, in `.env`. It selects the stream endpoint, the RPC endpoint and the USDC mint together ([`src/config.ts:7`](src/config.ts#L7)).
 
 | Variable | Meaning |
 | --- | --- |
