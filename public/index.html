@@ -4,243 +4,414 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>usdc-deposit-watcher</title>
+<script>document.documentElement.dataset.theme = localStorage.getItem("theme") || "light";</script>
+<link rel="stylesheet" href="/tokens.css">
 <style>
   :root {
-    --bg: #0b0d10; --panel: #11141a; --line: #222831; --text: #e8eaed; --muted: #7b8591;
-    --green: #3ddc97; --amber: #f5b942; --grey: #6b7280; --red: #ff6b6b;
+    --bg: var(--c-bg); --panel: var(--c-surface); --line: var(--c-border); --line-2: var(--c-border-strong);
+    --text: var(--c-text); --muted: var(--c-muted);
+    --green: var(--c-ok); --amber: var(--c-warn); --grey: var(--c-grey); --red: var(--c-danger);
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --r-card: 16px; --r-btn: 10px;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
     --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
-  main { max-width: 1240px; margin: 0 auto; padding: 56px 40px 72px; }
+  html { background: var(--bg); }
+  body { margin: 0; min-height: 100dvh; color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  main { max-width: 1780px; margin: 0 auto; padding: 36px 56px 40px; }
 
-  header { display: flex; justify-content: space-between; align-items: center; }
-  .brand { font-family: var(--mono); font-size: 18px; color: var(--muted); }
+  header { display: flex; justify-content: space-between; align-items: center; height: 44px; }
+  .brand { font-family: var(--mono); font-size: 17px; color: var(--muted); display: flex; align-items: center; gap: 14px; }
   .brand b { color: var(--text); font-weight: 500; }
-  .net { margin-left: 14px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; }
+  .net { padding: 3px 10px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 12.5px; }
 
-  .pill { display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 999px;
-          border: 1px solid var(--line); background: var(--panel); font-family: var(--mono); font-size: 17px; }
-  .pill i { width: 10px; height: 10px; border-radius: 50%; background: var(--grey); }
-  .pill.live i { background: var(--green); box-shadow: 0 0 0 0 rgba(61,220,151,.6); animation: pulse 2s infinite; }
-  .pill.dropped { color: var(--red); border-color: rgba(255,107,107,.4); }
+  .head-r { display: flex; align-items: center; gap: 12px; }
+  .pill { position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 9px 18px 9px 16px; border-radius: 999px;
+          border: 1px solid var(--line-2); background: var(--panel); font-family: var(--mono); font-size: 16px;
+          transition: color 200ms ease, border-color 200ms ease; }
+  .pill i { position: relative; width: 9px; height: 9px; border-radius: 50%; background: var(--grey); transition: background-color 200ms ease; }
+  .pill i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; opacity: 0; }
+  .pill.live i { background: var(--green); }
+  .pill.live i::after { animation: ring 2.4s var(--ease-out) infinite; }
+  .pill.replaying { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); }
+  .pill.replaying i { background: var(--amber); }
+  .pill.dropped { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); }
   .pill.dropped i { background: var(--red); }
-  .pill.replaying { color: var(--amber); border-color: rgba(245,185,66,.4); }
-  .pill.replaying i { background: var(--amber); animation: pulse 1s infinite; }
-  @keyframes pulse { 70% { box-shadow: 0 0 0 10px rgba(61,220,151,0); } 100% { box-shadow: 0 0 0 0 rgba(61,220,151,0); } }
+  @keyframes ring { 0% { transform: scale(1); opacity: .5; } 70%, 100% { transform: scale(3.2); opacity: 0; } }
 
-  .balance { margin-top: 64px; }
-  .label { font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-  .amount { margin-top: 8px; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 128px;
-            line-height: 1; letter-spacing: -.02em; display: flex; align-items: baseline; gap: 20px; }
-  .amount small { font-size: 28px; color: var(--muted); letter-spacing: 0; }
-  .amount.bump { animation: bump .7s ease-out; }
-  @keyframes bump { 0% { color: var(--green); } 100% { color: var(--text); } }
-  .wallet { margin-top: 14px; font-family: var(--mono); font-size: 15px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 64px; margin-top: 20px; align-items: start; }
 
-  .flow { position: relative; height: 230px; margin-top: 72px; }
-  .track { position: absolute; top: 50%; height: 2px; background: var(--line); }
-  .node { position: absolute; top: 50%; width: 270px; height: 112px; margin-top: -56px; border: 1px solid var(--line);
-          border-radius: 14px; background: var(--panel); display: flex; flex-direction: column;
-          align-items: center; justify-content: center; gap: 6px; transition: border-color .3s, box-shadow .3s; }
-  .node strong { font-family: var(--mono); font-size: 22px; font-weight: 500; }
-  .node span { font-size: 13px; color: var(--muted); }
-  #n-stream { left: 0; } #n-credit { left: 50%; margin-left: -135px; } #n-ledger { right: 0; }
-  .node.flash-green { border-color: var(--green); box-shadow: 0 0 40px rgba(61,220,151,.25); }
-  .node.flash-amber { border-color: var(--amber); box-shadow: 0 0 40px rgba(245,185,66,.2); }
-  .tag { position: absolute; left: 50%; top: 4px; transform: translateX(-50%); font-family: var(--mono); font-size: 15px;
-         color: var(--amber); opacity: 0; white-space: nowrap; pointer-events: none; }
-  .dot { position: absolute; top: 50%; left: 0; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; opacity: 0; }
-  .dot.credited { background: var(--green); box-shadow: 0 0 22px var(--green); }
-  .dot.duplicate { background: var(--amber); box-shadow: 0 0 22px var(--amber); }
-  .dot.ignored { background: var(--grey); }
+  .stage { position: relative; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); padding: 22px 22px 14px;
+           --anatomy-paper: var(--m-paper); --anatomy-card: var(--m-paper); --anatomy-face: var(--m-face); --anatomy-top: var(--m-top);
+           --anatomy-shade-0: var(--m-s0); --anatomy-shade-1: var(--m-s1); --anatomy-shade-2: var(--m-s2); --anatomy-shade-3: var(--m-s3);
+           --anatomy-lit-top: var(--m-lit-top); --anatomy-lit-shade: var(--m-lit-shade);
+           --anatomy-hi: var(--m-hi); --anatomy-mid: var(--m-mid); --anatomy-lo: var(--m-lo); --anatomy-faint: var(--m-faint); --anatomy-lit: var(--m-lit);
+           --anatomy-halo: var(--m-halo); --anatomy-halo-opacity: var(--m-halo-opacity); --anatomy-dot: var(--m-dot); --anatomy-weight: .6px;
+           --anatomy-mono: var(--mono); }
+  .stage-cap { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .stage-svg { position: relative; margin-top: 6px; }
+  .stage-svg svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .stage-svg svg path, .stage-svg svg circle { vector-effect: non-scaling-stroke; }
+  .iso-fill { fill: var(--anatomy-paper); stroke: none; }
+  .iso-solid[data-lit] > .iso-fill { fill: var(--anatomy-face); }
+  .iso-shade, .iso-top { stroke: none; }
+  .iso-shade[data-shade="0"] { fill: var(--anatomy-shade-0); } .iso-shade[data-shade="1"] { fill: var(--anatomy-shade-1); }
+  .iso-shade[data-shade="2"] { fill: var(--anatomy-shade-2); } .iso-shade[data-shade="3"] { fill: var(--anatomy-shade-3); }
+  .iso-top { fill: var(--anatomy-top); }
+  .iso-solid[data-lit] > .iso-top { fill: var(--anatomy-lit-top); } .iso-solid[data-lit] > .iso-shade { fill: var(--anatomy-lit-shade); }
+  .iso-solid[data-lit] > .iso-edge { stroke: var(--anatomy-lit); }
+  .iso-halo { fill: var(--anatomy-halo); stroke: none; filter: blur(9px); opacity: var(--anatomy-halo-opacity); transform: translateY(3px); }
+  .iso-line { fill: none; stroke: var(--anatomy-lo); stroke-width: var(--anatomy-weight); stroke-linecap: round; stroke-linejoin: round; }
+  .iso-line[data-tone="hi"] { stroke: var(--anatomy-hi); } .iso-line[data-tone="mid"] { stroke: var(--anatomy-mid); }
+  .iso-line[data-tone="lo"] { stroke: var(--anatomy-lo); } .iso-line[data-tone="faint"] { stroke: var(--anatomy-faint); }
+  .iso-line[data-tone="lit"] { stroke: var(--anatomy-lit); }
+  .iso-line[data-dashed] { stroke-dasharray: 3 3; }
+  .iso-dots circle { fill: var(--anatomy-dot); stroke: none; opacity: .32; }
+  .iso-dots[data-tone="hi"] circle { opacity: .85; }
+  .iso-face-text { fill: var(--anatomy-mid); font-family: var(--mono); letter-spacing: .04em; }
 
-  .controls { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
-  button { font-family: var(--mono); font-size: 16px; padding: 12px 22px; border-radius: 10px; cursor: pointer;
-           border: 1px solid var(--line); background: var(--panel); color: var(--text); }
-  button:hover:not(:disabled) { border-color: var(--muted); }
+  /* tokens: neutral until the machine decides what they are */
+  .coin { opacity: 0; }
+  .coin .iso-top, .coin .iso-shade, .coin .iso-edge { transition: fill 160ms ease, stroke 160ms ease; }
+  .coin[data-kind="credited"] .iso-top { fill: var(--c-ok-solid); } .coin[data-kind="credited"] .iso-shade { fill: var(--c-ok-shade); } .coin[data-kind="credited"] .iso-edge { stroke: var(--c-ok-edge); }
+  .coin[data-kind="duplicate"] .iso-top { fill: var(--c-warn-solid); } .coin[data-kind="duplicate"] .iso-shade { fill: var(--c-warn-shade); } .coin[data-kind="duplicate"] .iso-edge { stroke: var(--c-warn-edge); }
+  .coin[data-kind="ignored"] .iso-top { fill: var(--c-grey); } .coin[data-kind="ignored"] .iso-shade { fill: var(--c-grey-shade); } .coin[data-kind="ignored"] .iso-edge { stroke: var(--c-grey-edge); }
+
+  .stub { opacity: 0; transform: translateY(-5px); transition: opacity 200ms ease, transform 240ms var(--ease-out); }
+  .stub[data-on] { opacity: 1; transform: none; }
+  .stub[data-hit] .iso-edge { stroke: var(--amber); }
+  .stub .iso-edge { transition: stroke 200ms ease; }
+  .flap { transition: opacity 180ms ease; }
+  .flap[data-open="0"] { opacity: 0; }
+  #flaps[data-closed] .flap[data-open="0"] { opacity: 1; }
+  #flaps[data-closed] .flap[data-open="1"] { opacity: 0; }
+
+  .tag { position: absolute; transform: translate(-50%, 4px); opacity: 0; font-family: var(--mono); font-size: 15px; padding: 5px 10px; border-radius: 8px;
+         background: var(--bg); border: 1px solid var(--line-2); white-space: nowrap; pointer-events: none;
+         transition: opacity 180ms var(--ease-out), transform 240ms var(--ease-out); }
+  .tag.on { opacity: 1; transform: translate(-50%, -6px); }
+  .tag[data-kind="credited"] { color: var(--green); } .tag[data-kind="duplicate"] { color: var(--amber); } .tag[data-kind="ignored"] { color: var(--muted); }
+
+  .foot { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; margin-top: 22px; }
+  .keys { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; font-size: 15px; color: var(--muted); line-height: 1.4; }
+  .keys li { display: flex; gap: 12px; align-items: baseline; }
+  .keys b { color: var(--text); font-weight: 500; margin-right: 6px; }
+  .keys i { flex: none; width: 11px; height: 11px; border-radius: 50%; transform: translateY(1px); }
+  .keys i[data-kind="credited"] { background: var(--c-ok-solid); } .keys i[data-kind="duplicate"] { background: var(--c-warn-solid); } .keys i[data-kind="ignored"] { background: var(--c-grey); }
+  .controls { display: flex; justify-content: flex-end; gap: 10px; min-height: 46px; flex: none; }
+  button { font-family: var(--mono); font-size: 15px; padding: 11px 20px; border-radius: var(--r-btn); cursor: pointer;
+           border: 1px solid var(--line-2); background: var(--panel); color: var(--text);
+           transition: transform 160ms var(--ease-out), border-color 160ms ease, opacity 160ms ease; }
+  button:active:not(:disabled) { transform: scale(0.97); }
   button:disabled { opacity: .35; cursor: default; }
   button.ghost { background: transparent; color: var(--muted); }
+  @media (hover: hover) and (pointer: fine) { button:hover:not(:disabled) { border-color: var(--muted); } }
+  button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
-  table { width: 100%; margin-top: 48px; border-collapse: collapse; font-family: var(--mono); font-size: 18px; }
-  th { text-align: left; font: 500 13px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
-       padding: 0 0 14px; border-bottom: 1px solid var(--line); }
-  td { padding: 15px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .label { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .amount { margin-top: 10px; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 112px; line-height: 1; letter-spacing: -.03em;
+            display: flex; align-items: baseline; gap: 18px; transition: color 700ms var(--ease-out); }
+  .amount small { font-size: 26px; letter-spacing: 0; color: var(--muted); }
+  .amount.bump { color: var(--green); transition-duration: 0ms; }
+  .wallet { margin-top: 14px; font-family: var(--mono); font-size: 14px; color: var(--muted); word-break: break-all; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 34px; border-top: 1px solid var(--line); }
+  .stat { padding: 18px 0 0; }
+  .stat + .stat { padding-left: 24px; border-left: 1px solid var(--line); }
+  .stat b { display: block; margin-top: 8px; font: 500 34px var(--mono); font-variant-numeric: tabular-nums; }
+  .stat[data-kind="credited"] b { color: var(--green); } .stat[data-kind="duplicate"] b { color: var(--amber); } .stat[data-kind="ignored"] b { color: var(--muted); }
+
+  table { width: 100%; margin-top: 36px; border-collapse: collapse; font-family: var(--mono); font-size: 16px; }
+  th { text-align: left; font: 500 12px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 0 0 12px; border-bottom: 1px solid var(--line); }
+  td { padding: 11px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
   th.r, td.r { text-align: right; }
-  td a { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--muted); }
-  td a:hover { color: var(--green); }
+  td a { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--muted); transition: color 160ms ease; }
+  @media (hover: hover) and (pointer: fine) { td a:hover { color: var(--green); } }
   .muted { color: var(--muted); }
-  .act { font-size: 15px; }
   .act.credited { color: var(--green); } .act.duplicate { color: var(--amber); } .act.ignored { color: var(--grey); }
-  tr.new td { animation: rowin .6s ease-out; }
-  @keyframes rowin { from { background: rgba(255,255,255,.07); } to { background: transparent; } }
-  .empty { padding: 28px 0; color: var(--muted); font-family: var(--sans); font-size: 16px; }
+  tbody tr { transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out); }
+  @starting-style { tbody tr { opacity: 0; transform: translateY(-6px); } }
+  .empty { padding: 22px 0; color: var(--muted); font-size: 15px; }
+
+  @media (max-width: 1280px) { .grid { grid-template-columns: 1fr; gap: 40px; } main { padding: 28px 24px; } .amount { font-size: 72px; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pill.live i::after { animation: none; }
+    tbody tr { transition: opacity 160ms ease; }
+    @starting-style { tbody tr { transform: none; } }
+    .stub, .tag { transition: opacity 160ms ease; transform: translate(-50%, -6px); }
+    .stub { transform: none; }
+  }
 </style>
 </head>
 <body>
 <main>
   <header>
     <div class="brand"><b>usdc-deposit-watcher</b><span class="net" id="net">-</span></div>
-    <div class="pill" id="pill"><i></i><span id="pill-text">connecting</span></div>
+    <div class="head-r"><button class="ghost" id="theme" aria-label="Switch colour theme">Theme</button><div class="pill" id="pill" role="status"><i></i><span id="pill-text">connecting</span></div></div>
   </header>
 
-  <section class="balance">
-    <div class="label">Balance</div>
-    <div class="amount" id="amount"><span id="amount-n">0.000000</span><small>USDC</small></div>
-    <div class="wallet" id="wallet"></div>
-  </section>
+  <div class="grid">
+    <section>
+      <div class="stage" id="stage">
+        <div class="stage-cap"><span>Deposit machine</span><span id="readout">waiting for events</span></div>
+        <div class="stage-svg" id="machine">
+          <div class="tag" id="tag-credited" data-kind="credited">credited</div>
+          <div class="tag" id="tag-duplicate" data-kind="duplicate">duplicate, skipped</div>
+          <div class="tag" id="tag-ignored" data-kind="ignored">ignored</div>
+        </div>
+      </div>
+      <div class="foot">
+        <ul class="keys">
+          <li><i data-kind="credited"></i><span><b>Credited</b> New signature. The balance goes up once.</span></li>
+          <li><i data-kind="duplicate"></i><span><b>Skipped</b> Signature already in the ledger. Nothing changes.</span></li>
+          <li><i data-kind="ignored"></i><span><b>Ignored</b> Failed, wrong mint, or not a deposit.</span></li>
+        </ul>
+        <div class="controls">
+          <button class="ghost" id="reconnect" hidden>Reconnect now</button>
+          <button id="drop" disabled>Drop stream</button>
+        </div>
+      </div>
+    </section>
 
-  <section class="flow" id="flow">
-    <div class="track" id="track1"></div>
-    <div class="track" id="track2"></div>
-    <div class="node" id="n-stream"><strong>LaserStream</strong><span>gRPC subscription</span></div>
-    <div class="node" id="n-credit"><strong>creditDeposit()</strong><span>unique (signature, account)</span></div>
-    <div class="node" id="n-ledger"><strong>Ledger (SQLite)</strong><span>deposits, balances, cursor</span></div>
-    <div class="tag" id="tag">duplicate, skipped</div>
-  </section>
-  <div class="controls">
-    <button class="ghost" id="reconnect" hidden>Reconnect now</button>
-    <button id="drop" disabled>Drop stream</button>
+    <section>
+      <div class="label">Balance</div>
+      <div class="amount" id="amount"><span id="amount-n">0.000000</span><small>USDC</small></div>
+      <div class="wallet" id="wallet"></div>
+
+      <div class="stats">
+        <div class="stat" data-kind="credited"><span class="label">Credited</span><b id="s-credited">0</b></div>
+        <div class="stat" data-kind="duplicate"><span class="label">Skipped</span><b id="s-duplicate">0</b></div>
+        <div class="stat" data-kind="ignored"><span class="label">Ignored</span><b id="s-ignored">0</b></div>
+      </div>
+
+      <table>
+        <thead><tr><th style="width:96px">Time</th><th style="width:84px">Source</th><th>Signature</th><th class="r" style="width:138px">Amount</th><th class="r" style="width:104px">Action</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty" id="empty">No events yet. Send USDC to the watched wallet.</div>
+    </section>
   </div>
-
-  <table>
-    <thead><tr><th style="width:130px">Time</th><th style="width:130px">Source</th><th>Signature</th><th class="r" style="width:190px">Amount</th><th class="r" style="width:150px">Action</th></tr></thead>
-    <tbody id="rows"></tbody>
-  </table>
-  <div class="empty" id="empty">No events yet. Send USDC to the watched wallet.</div>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const flow = $("flow");
-let explorer = { base: "https://explorer.solana.com/tx/", suffix: "" };
+// ?slow=5 plays every animation 5x slower, for frame-by-frame review
+const SLOW = Number(new URLSearchParams(location.search).get("slow")) || 1;
+const later = (fn, ms) => setTimeout(fn, ms * SLOW);
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+const NS = "http://www.w3.org/2000/svg";
+let M = null, svg = null, explorer = { base: "https://explorer.solana.com/tx/", suffix: "" };
 let balance = 0, latestBalance = null, inFlight = 0, nextFree = 0, countdown = null;
+let stubCount = 0, dialTurn = 0, dialTarget = 0, credits = 0;
+const slotOf = new Map();
+const pending = [];
 
-// Positions are measured from the real nodes, so the dots follow the layout at any width.
-function geometry() {
-  const f = flow.getBoundingClientRect();
-  const r = (id) => { const b = $(id).getBoundingClientRect(); return { l: b.left - f.left, r: b.right - f.left }; };
-  const s = r("n-stream"), c = r("n-credit"), l = r("n-ledger");
-  for (const [id, a, b] of [["track1", s.r, c.l], ["track2", c.r, l.l]]) {
-    $(id).style.left = a + "px"; $(id).style.width = (b - a) + "px";
-  }
-  return { x0: s.r, x1: c.l, x2: l.l + 40 };
+/* camera: same formula as the drawing */
+const cam = () => { const a = M.P.azimuth * Math.PI / 180, e = M.P.elevation * Math.PI / 180, k = M.P.scale * Math.sqrt(1.6);
+  return { sa: Math.sin(a), ca: Math.cos(a), se: Math.sin(e), ce: Math.cos(e), k }; };
+const iso = ([x, y, z]) => { const c = cam(); return [M.P.origin[0] + (x * c.sa - y * c.ca) * c.k, M.P.origin[1] + ((x * c.ca + y * c.sa) * c.se - z * c.ce) * c.k]; };
+const shift = (p) => { const a = iso(p), o = iso([0, 0, 0]); return `translate(${(a[0] - o[0]).toFixed(2)} ${(a[1] - o[1]).toFixed(2)})`; };
+
+/* easing */
+const bez = (x1, y1, x2, y2) => (x) => { let t = x; for (let i = 0; i < 6; i++) { const cx = 3 * x1 * t * (1 - t) ** 2 + 3 * x2 * t * t * (1 - t) + t ** 3 - x; const d = 3 * x1 * (1 - t) ** 2 + 6 * (x2 - x1) * t * (1 - t) + 3 * (1 - x2) * t * t; if (Math.abs(d) < 1e-6) break; t -= cx / d; }
+  return 3 * y1 * t * (1 - t) ** 2 + 3 * y2 * t * t * (1 - t) + t ** 3; };
+const EASE = { out: bez(0.23, 1, 0.32, 1), inOut: bez(0.77, 0, 0.175, 1), lin: (t) => t };
+
+/* one rAF loop drives every moving part, and sleeps when nothing moves */
+const actors = new Set(); let raf = 0;
+function loop(now) { for (const a of [...actors]) if (a(now) === false) actors.delete(a); raf = actors.size ? requestAnimationFrame(loop) : 0; }
+const run = (fn) => { actors.add(fn); if (!raf) raf = requestAnimationFrame(loop); };
+
+function timeline(keys, apply, done) {
+  const t0 = performance.now();
+  run((now) => {
+    const t = (now - t0) / SLOW;
+    let i = 0; while (i < keys.length - 2 && t > keys[i + 1].t) i++;
+    const a = keys[i], b = keys[i + 1];
+    const k = Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t || 1)));
+    const f = (EASE[b.ease || "inOut"])(k);
+    apply({ p: a.p.map((v, j) => v + (b.p[j] - v) * f), o: a.o + (b.o - a.o) * f });
+    if (t >= keys[keys.length - 1].t) { done && done(); return false; }
+  });
 }
 
-function flash(id, cls, ms = 900) {
-  const el = $(id); el.classList.add(cls); setTimeout(() => el.classList.remove(cls), ms);
+function flapState(closed) { closed ? $("flaps").setAttribute("data-closed", "") : $("flaps").removeAttribute("data-closed"); }
+function punchCycle(reject) {
+  const g = svg.querySelector("#punch"), up = M.PUNCH_UP, dn = M.PUNCH_DOWN;
+  const keys = reject
+    ? [{ t: 0, p: [0, 0, up], o: 1 }, { t: 110, p: [0, 0, dn + 3], o: 1, ease: "out" }, { t: 170, p: [0, 0, dn + 3], o: 1 }, { t: 330, p: [0, 0, up], o: 1, ease: "out" }]
+    : [{ t: 0, p: [0, 0, up], o: 1 }, { t: 140, p: [0, 0, dn], o: 1, ease: "out" }, { t: 260, p: [0, 0, dn], o: 1 }, { t: 480, p: [0, 0, up], o: 1, ease: "out" }];
+  timeline(keys, ({ p }) => g.setAttribute("transform", shift([0, 0, p[2] - up])));
 }
 
-function launchDot(e) {
-  const g = geometry();
-  const dot = document.createElement("div");
-  dot.className = "dot " + e.action;
-  flow.appendChild(dot);
-  const at = (x, o, extra = {}) => ({ transform: `translateX(${x}px)`, offset: o, ...extra });
-  let frames, ms;
+function tag(kind, text, delay = 0) {
+  const el = $("tag-" + kind), [x, y] = M.anchors[kind];
+  el.textContent = text; el.style.left = (x / M.W * 100) + "%"; el.style.top = (y / M.H * 100) + "%";
+  later(() => { el.classList.add("on"); later(() => el.classList.remove("on"), 1400); }, delay);
+}
+
+function launchCoin(e) {
+  const g = document.createElementNS(NS, "g");
+  g.innerHTML = M.coin; const coin = g.firstChild; svg.querySelector("#coins").appendChild(coin);
+  const [sx, sy, sz] = M.spawn, gx = M.GATE_X, z = M.Z0;
+  const set = ({ p, o }) => { coin.setAttribute("transform", shift(p)); coin.style.opacity = o; };
+  const fin = () => coin.remove();
+  const ground = (kind) => coin.setAttribute("data-kind", kind);
+  const bin = M.bin, dup = M.dup, ign = M.ign;
   if (e.action === "credited") {
-    ms = 2400;
-    frames = [at(g.x0, 0, { opacity: 0 }), at(g.x0 + 10, .05, { opacity: 1 }), at(g.x1, .42, { opacity: 1 }),
-              at(g.x1 + 6, .5, { opacity: 1 }), at(g.x2, .88, { opacity: 1 }), at(g.x2 + 14, 1, { opacity: 0 })];
-    setTimeout(() => flash("n-credit", "flash-green", 500), ms * .42);
-    setTimeout(() => { flash("n-ledger", "flash-green", 1000); landCredit(); }, ms * .88);
+    later(() => ground("credited"), 880);
+    later(() => punchCycle(false), 780);
+    if (!slotOf.has(e.signature)) { const s = stubCount++ % M.SLOTS; for (const [sig, v] of slotOf) if (v === s) slotOf.delete(sig); slotOf.set(e.signature, s); later(() => setStub(s, true), 900); }
+    later(() => { tag("credited", "credited +" + Number(e.amount).toFixed(2)); }, 2150);
+    timeline([
+      { t: 0, p: [sx, 0, z], o: 0 }, { t: 160, p: [sx + 8, 0, z], o: 1, ease: "out" }, { t: 820, p: [gx, 0, z], o: 1 },
+      { t: 1300, p: [gx, 0, z], o: 1 }, { t: 1980, p: [bin.x + 2, 0, z], o: 1 }, { t: 2260, p: [bin.x + 16, 0, z], o: 1, ease: "out" },
+      { t: 2640, p: [bin.x + 18, 0, 3.4], o: 0, ease: "out" },
+    ], set, () => { fin(); landCredit(e); });
   } else if (e.action === "duplicate") {
-    ms = 2400;
-    frames = [at(g.x0, 0, { opacity: 0 }), at(g.x0 + 10, .06, { opacity: 1 }), at(g.x1, .5, { opacity: 1 }),
-              at(g.x1 + 4, .75, { opacity: 1 }), at(g.x1 + 4, 1, { opacity: 0 })];
-    setTimeout(() => {
-      flash("n-credit", "flash-amber", 1500);
-      $("tag").animate([{ opacity: 0, top: "14px" }, { opacity: 1, top: "-6px", offset: .2 }, { opacity: 1, top: "-6px", offset: .8 }, { opacity: 0, top: "-6px" }],
-                       { duration: 1800, fill: "forwards" });
-    }, ms * .5);
+    const hit = slotOf.get(e.signature);
+    later(() => ground("duplicate"), 880);
+    later(() => punchCycle(true), 780);
+    if (hit !== undefined) later(() => { setHit(hit, true); later(() => setHit(hit, false), 1100); }, 860);
+    later(() => flapState(true), 1150);
+    later(() => tag("duplicate", "duplicate, skipped"), 2100);
+    later(() => flapState(false), 3000);
+    timeline([
+      { t: 0, p: [sx, 0, z], o: 0 }, { t: 160, p: [sx + 8, 0, z], o: 1, ease: "out" }, { t: 820, p: [gx, 0, z], o: 1 },
+      { t: 880, p: [gx - 1.4, 0, z], o: 1, ease: "out" }, { t: 940, p: [gx + 1, 0, z], o: 1, ease: "out" }, { t: 1300, p: [gx, 0, z], o: 1 },
+      { t: 1760, p: [M.FLAP_X + 4, 0, z], o: 1 }, { t: 2260, p: [dup.x + 14, dup.y + 6, z], o: 1, ease: "out" },
+      { t: 2560, p: [dup.x + 14, dup.y + 14, 2.4], o: 1, ease: "out" }, { t: 3100, p: [dup.x + 14, dup.y + 14, 2.4], o: 0 },
+    ], set, fin);
   } else {
-    ms = 2000;
-    const mid = g.x0 + (g.x1 - g.x0) * .45;
-    frames = [at(g.x0, 0, { opacity: 0 }), at(g.x0 + 10, .08, { opacity: .9 }), at(mid, 1, { opacity: 0 })];
+    later(() => ground("ignored"), 650);
+    later(() => tag("ignored", "ignored"), 1250);
+    const x = ign.x + ign.w / 2;
+    timeline([
+      { t: 0, p: [sx, 0, z], o: 0 }, { t: 160, p: [sx + 8, 0, z], o: 1, ease: "out" }, { t: 700, p: [x, 0, z], o: 1 },
+      { t: 1180, p: [x, ign.y + 12, z], o: 1, ease: "out" }, { t: 1380, p: [x, ign.y + 14, 2.4], o: 1, ease: "out" }, { t: 1900, p: [x, ign.y + 14, 2.4], o: 0 },
+    ], set, fin);
   }
-  dot.animate(frames, { duration: ms, easing: "ease-in-out", fill: "forwards" }).onfinish = () => dot.remove();
 }
 
-function landCredit() {
+function landCredit(e) {
   inFlight = Math.max(0, inFlight - 1);
   if (inFlight === 0 && latestBalance !== null) setBalance(latestBalance);
+  dialTarget = (credits % 10) / 10 + Math.floor(credits / 10);
+  run(dialStep);
 }
 
+/* the dial: critically damped spring toward the credit count */
+let dialRate = 0, dialLast = 0;
+function dialStep(now) {
+  const dt = dialLast ? Math.min((now - dialLast) / 1000, 1 / 30) : 1 / 60; dialLast = now;
+  const stiff = 90, drag = 2 * Math.sqrt(stiff);
+  dialRate += ((dialTarget - dialTurn) * stiff - dialRate * drag) * dt; dialTurn += dialRate * dt;
+  drawNeedle(dialTurn);
+  if (Math.abs(dialTarget - dialTurn) < 0.0004 && Math.abs(dialRate) < 0.001) { dialTurn = dialTarget; drawNeedle(dialTurn); dialLast = 0; return false; }
+}
+function drawNeedle(turn) {
+  const a = turn * Math.PI * 2, [x, y] = M.dial, r = M.dialR, z = M.dialTop + 1;
+  const p = (px, py) => iso([px, py, z]).map((v) => v.toFixed(1)).join(" ");
+  svg.querySelector("#needle").setAttribute("d", `M${p(x - Math.sin(a) * 2.6, y + Math.cos(a) * 2.6)}L${p(x + Math.sin(a) * (r - 4), y - Math.cos(a) * (r - 4))}`);
+}
+const setStub = (i, on) => { const el = svg.querySelector(`.stub[data-slot="${i}"]`); on ? el.setAttribute("data-on", "") : el.removeAttribute("data-on"); };
+const setHit = (i, on) => { const el = svg.querySelector(`.stub[data-slot="${i}"]`); on ? el.setAttribute("data-hit", "") : el.removeAttribute("data-hit"); };
+
+/* balance */
 function setBalance(v) {
   const from = balance, to = Number(v), t0 = performance.now();
   balance = to;
-  if (from === to) { $("amount-n").textContent = to.toFixed(6); return; }
-  $("amount").classList.remove("bump"); void $("amount").offsetWidth; $("amount").classList.add("bump");
-  (function tick(now) {
-    const k = Math.min(1, (now - t0) / 700);
-    $("amount-n").textContent = (from + (to - from) * (1 - Math.pow(1 - k, 3))).toFixed(6);
-    if (k < 1) requestAnimationFrame(tick);
-  })(t0);
+  if (from === to || still.matches) { $("amount-n").textContent = to.toFixed(6); return; }
+  const el = $("amount"); el.classList.add("bump"); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("bump")));
+  run((now) => { const k = Math.min(1, (now - t0) / 650); $("amount-n").textContent = (from + (to - from) * EASE.out(k)).toFixed(6); if (k >= 1) return false; });
 }
 
+/* table */
 const hhmmss = (t) => new Date(t).toLocaleTimeString("en-GB");
 const shortSig = (s) => s.slice(0, 4) + "…" + s.slice(-4);
-
 function addRow(e) {
   $("empty").hidden = true;
   const tr = document.createElement("tr");
-  tr.className = "new";
   const amt = e.action === "ignored" ? "-" : "+" + Number(e.amount).toFixed(6);
   tr.innerHTML = `<td class="muted">${hhmmss(e.t)}</td><td>${e.source}</td>
     <td><a target="_blank" rel="noreferrer" href="${explorer.base}${e.signature}${explorer.suffix}">${shortSig(e.signature)}</a></td>
     <td class="r ${e.action === "ignored" ? "muted" : ""}">${amt}</td><td class="r act ${e.action}">${e.action}</td>`;
   $("rows").prepend(tr);
   while ($("rows").children.length > 10) $("rows").lastChild.remove();
+  $("readout").textContent = e.action + " " + shortSig(e.signature);
 }
 
-// Events can arrive in a burst (a replay). Space the dots out so each one is visible.
+/* events can arrive in a burst (a replay): space the coins out so each one is readable */
 function play(e) {
-  const now = performance.now();
-  const start = Math.max(now, nextFree);
-  nextFree = start + 450;
+  if (!M) { pending.push(e); return; }
+  const now = performance.now(), start = Math.max(now, nextFree);
+  nextFree = start + 520;
   if (e.action === "credited") inFlight++;
-  setTimeout(() => { addRow(e); launchDot(e); }, start - now);
+  later(() => {
+    addRow(e);
+    if (e.action === "credited") credits++;
+    if (still.matches) { quick(e); return; }
+    launchCoin(e);
+  }, start - now);
+}
+function quick(e) {
+  const kind = e.action; tag(kind, kind === "duplicate" ? "duplicate, skipped" : kind === "ignored" ? "ignored" : "credited +" + Number(e.amount).toFixed(2));
+  if (kind === "credited") { const s = stubCount++ % M.SLOTS; slotOf.set(e.signature, s); setStub(s, true); inFlight = Math.max(0, inFlight - 1); if (!inFlight && latestBalance !== null) setBalance(latestBalance); dialTurn = dialTarget = (credits % 10) / 10; drawNeedle(dialTurn); }
 }
 
 function showStatus(s) {
   clearInterval(countdown);
-  const pill = $("pill");
-  pill.className = "pill " + s.state;
+  $("pill").className = "pill " + s.state;
   $("drop").disabled = s.state !== "live";
   $("reconnect").hidden = s.state !== "dropped";
   if (s.state === "live") $("pill-text").textContent = "live";
   else if (s.state === "replaying") $("pill-text").textContent = "replaying from slot " + s.fromSlot.toLocaleString("en-US");
   else {
-    const draw = () => {
-      const left = Math.max(0, Math.ceil((s.reconnectAt - Date.now()) / 1000));
-      $("pill-text").textContent = left > 0 ? `dropped, reconnecting in ${left}s` : "dropped, reconnecting";
-    };
+    const draw = () => { const left = Math.max(0, Math.ceil((s.reconnectAt - Date.now()) / 1000)); $("pill-text").textContent = left > 0 ? `dropped, reconnecting in ${left}s` : "dropped, reconnecting"; };
     draw(); countdown = setInterval(draw, 250);
   }
 }
+const showStats = (s) => { credits = Math.max(credits, s.credited); $("s-credited").textContent = s.credited; $("s-duplicate").textContent = s.duplicate; $("s-ignored").textContent = s.ignored; };
 
-const es = new EventSource("/events");
-es.addEventListener("snapshot", (m) => {
+async function boot() {
+  const [m, markup] = await Promise.all([fetch("/machine.json").then((r) => r.json()), fetch("/machine.svg").then((r) => r.text())]);
+  M = m; $("machine").insertAdjacentHTML("afterbegin", markup); svg = $("machine").querySelector("svg");
+  addEventListener("resize", () => {});
+  drawNeedle(dialTurn);
+  pending.splice(0).forEach(play);
+}
+
+let es;
+function connect() {
+es = new EventSource("/events");
+es.addEventListener("snapshot", async (m) => {
   const d = JSON.parse(m.data);
   explorer = { base: d.explorerBase, suffix: d.explorerSuffix };
   $("net").textContent = d.network;
-  $("wallet").textContent = "watching " + d.wallet + "  (USDC account " + d.account.slice(0, 4) + "…" + d.account.slice(-4) + ")";
+  $("wallet").textContent = d.wallet;
   balance = Number(d.balance); latestBalance = balance; $("amount-n").textContent = balance.toFixed(6);
-  $("rows").innerHTML = ""; $("empty").hidden = d.recent.length > 0;
-  d.recent.forEach(addRow);
-  document.querySelectorAll("tr.new").forEach((r) => r.classList.remove("new"));
+  $("rows").innerHTML = ""; $("empty").hidden = d.recent.length > 0; d.recent.forEach(addRow);
+  document.querySelectorAll("#rows tr").forEach((r) => r.style.transition = "");
   showStatus(d.status);
+  credits = d.stats.credited; showStats(d.stats);
+  dialTurn = dialTarget = (credits % 10) / 10 + Math.floor(credits / 10);
+  if (!M) await boot();
+  d.signatures.forEach((sig) => { const s = stubCount++ % M.SLOTS; slotOf.set(sig, s); setStub(s, true); });
+  drawNeedle(dialTurn);
 });
 es.addEventListener("tx", (m) => play(JSON.parse(m.data)));
 es.addEventListener("balance", (m) => { latestBalance = Number(JSON.parse(m.data).usdc); if (inFlight === 0) setBalance(latestBalance); });
+es.addEventListener("stats", (m) => { const s = JSON.parse(m.data); $("s-duplicate").textContent = s.duplicate; $("s-ignored").textContent = s.ignored; $("s-credited").textContent = s.credited; });
 es.addEventListener("status", (m) => showStatus(JSON.parse(m.data)));
-es.onerror = () => { $("pill").className = "pill dropped"; $("pill-text").textContent = "dashboard server unreachable"; };
+es.onerror = () => { (window.__errs ||= []).push([Math.round(performance.now()), es.readyState]); setTimeout(() => { if (es.readyState !== 1) { $("pill").className = "pill dropped"; $("pill-text").textContent = "dashboard server unreachable"; if (es.readyState === 2) connect(); } }, 4000); };
+}
+connect();
 
+$("theme").onclick = () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = t; localStorage.setItem("theme", t); };
 $("drop").onclick = () => fetch("/drop", { method: "POST" });
 $("reconnect").onclick = () => fetch("/reconnect", { method: "POST" });
-addEventListener("resize", geometry);
-geometry();
 </script>
 </body>
 </html>

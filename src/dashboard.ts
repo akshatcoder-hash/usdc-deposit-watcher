@@ -1,6 +1,6 @@
 import { loadConfig } from "./config.ts";
 import { onStatus, onTx, type Status, type TxEvent } from "./events.ts";
-import { getBalance, openDb } from "./ledger.ts";
+import { countDeposits, getBalance, openDb } from "./ledger.ts";
 import { logInfo } from "./log.ts";
 import { startWatcher } from "./watcher.ts";
 
@@ -11,6 +11,11 @@ const DROP_HOLD_MS = Number(process.env.DROP_HOLD_SECONDS ?? 30) * 1000;
 const cfg = loadConfig();
 const db = openDb(cfg.dbPath);
 const usdc = (raw: bigint) => (Number(raw) / 1e6).toFixed(6);
+
+const stats = { duplicate: 0, ignored: 0 };
+const recentSignatures = (): string[] =>
+  (db.query("SELECT signature FROM deposits ORDER BY rowid DESC LIMIT 12").all() as { signature: string }[]).map((r) => r.signature).reverse();
+const statsNow = () => ({ credited: countDeposits(db), duplicate: stats.duplicate, ignored: stats.ignored });
 
 let status: Status = { state: "replaying", fromSlot: 0 };
 const recent: TxEvent[] = [];
@@ -28,10 +33,13 @@ function send(event: string, data: unknown): void {
 }
 
 onTx((e) => {
+  if (e.action === "duplicate") stats.duplicate++;
+  if (e.action === "ignored") stats.ignored++;
   recent.unshift(e);
   recent.length = Math.min(recent.length, 10);
   send("tx", e);
   if (e.action === "credited") send("balance", { usdc: usdc(getBalance(db, cfg.ata)) });
+  send("stats", statsNow());
 });
 onStatus((s) => {
   status = s;
@@ -60,6 +68,9 @@ Bun.serve({
     if (!hostOk(req)) return new Response("bad host", { status: 403 });
 
     if (req.method === "GET" && url.pathname === "/") return new Response(Bun.file("public/index.html"));
+    if (req.method === "GET" && (url.pathname === "/machine.svg" || url.pathname === "/machine.json" || url.pathname === "/tokens.css")) {
+      return new Response(Bun.file(`public${url.pathname}`));
+    }
 
     if (req.method === "GET" && url.pathname === "/events") {
       let ctl!: ReadableStreamDefaultController<string>;
@@ -69,13 +80,15 @@ Bun.serve({
           ctl = c;
           clients.add(c);
           c.enqueue(
-            `event: snapshot\ndata: ${JSON.stringify({
+            `retry: 500\nevent: snapshot\ndata: ${JSON.stringify({
               network: cfg.network,
               wallet: cfg.wallet,
               account: cfg.ata,
               balance: usdc(getBalance(db, cfg.ata)),
               status,
               recent: [...recent].reverse(),
+              stats: statsNow(),
+              signatures: recentSignatures(),
               explorerBase: explorer("").replace(/\?.*$/, ""),
               explorerSuffix: cfg.network === "devnet" ? "?cluster=devnet" : "",
               dropHoldSeconds: DROP_HOLD_MS / 1000,
