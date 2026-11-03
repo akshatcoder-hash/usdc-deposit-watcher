@@ -14,25 +14,25 @@ bun test
 bun run demo
 ```
 
-To see a deposit, get devnet USDC from [faucet.circle.com](https://faucet.circle.com) (choose Solana Devnet) and send 0.01 USDC to `WATCH_WALLET` from a different wallet you control. The watcher prints one JSON line per event. A credited deposit looks like this (illustrative values):
+To see a deposit, get devnet USDC from [faucet.circle.com](https://faucet.circle.com) (choose Solana Devnet) and send a small amount of USDC to `WATCH_WALLET` from a different wallet you control. The watcher prints one JSON line per event. A credited deposit, from a real devnet run (signature shortened):
 
 ```json
-{"source":"stream","signature":"5mhP...","slot":518304542,"action":"credited","amount":"0.010000"}
+{"source":"stream","signature":"s32G...p8c","slot":518306376,"action":"credited","amount":"20.000000"}
 ```
 
-To watch a disconnect and recovery, run `bun run demo:kill` (same as `bun run src/demo.ts --kill-after=20`). It cancels the stream 20 seconds in. Send a deposit while it is down. On reconnect the watcher resubscribes from the last saved slot and credits it once. This is real output from a devnet run of that flag, with signatures shortened:
+To watch a disconnect and recovery, run `bun run demo:kill` (same as `bun run src/demo.ts --kill-after=20`). It cancels the stream 20 seconds in. Send a deposit while it is down. On reconnect the watcher resubscribes from the last saved slot and credits it once.
+
+This is real output from a devnet run. After the deposit above was credited, I moved the saved slot back to before it, started the watcher with `--kill-after=12`, and let it drop and reconnect. Both times the stream replayed the same deposit from the saved slot, and both times it was logged as a duplicate. The balance stayed at 20 USDC and the table kept one row.
 
 ```text
-{"msg":"subscribing","fromSlot":518304056,"commitment":"confirmed", ...}
-{"source":"stream","signature":"b2Cg...","slot":518304703,"action":"ignored"}
+{"msg":"subscribing","fromSlot":518306300,"commitment":"finalized", ...}
+{"source":"stream","signature":"s32G...p8c","slot":518306376,"action":"duplicate"}
 {"msg":"kill flag: dropping the stream now"}
 {"msg":"stream closed","reason":"dropped"}
-{"msg":"reconnecting","inMs":157}
-{"msg":"subscribing","fromSlot":518304703,"commitment":"confirmed", ...}
-{"source":"stream","signature":"b2Cg...","slot":518304703,"action":"ignored"}
+{"msg":"reconnecting","inMs":99}
+{"msg":"subscribing","fromSlot":518306300,"commitment":"finalized", ...}
+{"source":"stream","signature":"s32G...p8c","slot":518306376,"action":"duplicate"}
 ```
-
-The last line is the same transaction as the one before the drop. Resuming from the saved slot replays that slot, and crediting is built to survive that.
 
 ## Three ways deposit detection usually goes wrong
 
@@ -99,8 +99,8 @@ Use a mainnet API key from your dashboard. Use a new `DB_PATH` so devnet and mai
 ## What was tested
 
 - `bun test` runs tests 1 to 3 from fixtures shaped like LaserStream updates (byte signatures and keys, decimal-string slots). No network calls. They cover a duplicate from the stream, the same signature from the stream and a webhook source, and a drop followed by five deposits and a replay that credits all five once.
-- The live path (devnet LaserStream connection, `fromSlot` replay, the kill flag, reconnect from the saved slot) was run against Helius devnet using a busy devnet USDC account. In that run every transaction was an outgoing transfer, so every event was correctly `ignored`.
-- A real incoming USDC deposit through the live stream is not covered by any automated test. Do the quickstart send to check it on your own wallet.
+- Live on devnet, a 20 USDC deposit sent from another wallet was detected through LaserStream at `finalized` and credited once, with the sender, slot and block time recorded. The replay and kill-flag run above then re-delivered it twice and it stayed at one credit.
+- Not tested live: a drop that happens while a new deposit is in flight. The replay-after-drop case with new deposits is covered only by test 3, with fixtures.
 
 ## Next
 
