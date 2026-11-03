@@ -1,0 +1,219 @@
+.machine {
+  position: relative;
+  margin-block: 12px 6px;
+  min-height: 160px;
+  --anatomy-paper: var(--m-paper);
+  --anatomy-face: var(--m-face);
+  --anatomy-top: var(--m-top);
+  --anatomy-shade-0: var(--m-s0);
+  --anatomy-shade-1: var(--m-s1);
+  --anatomy-shade-2: var(--m-s2);
+  --anatomy-shade-3: var(--m-s3);
+  --anatomy-lit-top: var(--m-lit-top);
+  --anatomy-lit-shade: var(--m-lit-shade);
+  --anatomy-hi: var(--m-hi);
+  --anatomy-mid: var(--m-mid);
+  --anatomy-lo: var(--m-lo);
+  --anatomy-faint: var(--m-faint);
+  --anatomy-lit: var(--m-lit);
+  --anatomy-halo: var(--m-halo);
+  --anatomy-halo-opacity: var(--m-halo-opacity);
+  --anatomy-dot: var(--m-dot);
+  --anatomy-weight: 0.65px;
+}
+.machine svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 340px;
+  overflow: visible;
+}
+.machine svg path,
+.machine svg circle {
+  vector-effect: non-scaling-stroke;
+}
+.machine-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-block: 10px 16px;
+}
+.machine-toolbar p {
+  flex: 1;
+  min-width: 150px;
+}
+.machine-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+.machine-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#machine-loading {
+  padding: 40px 0;
+  text-align: center;
+}
+.iso-fill {
+  fill: var(--anatomy-paper);
+  stroke: none;
+}
+.iso-solid[data-lit] > .iso-fill {
+  fill: var(--anatomy-face);
+}
+.iso-shade,
+.iso-top {
+  stroke: none;
+}
+.iso-shade[data-shade="0"] {
+  fill: var(--anatomy-shade-0);
+}
+.iso-shade[data-shade="1"] {
+  fill: var(--anatomy-shade-1);
+}
+.iso-shade[data-shade="2"] {
+  fill: var(--anatomy-shade-2);
+}
+.iso-shade[data-shade="3"] {
+  fill: var(--anatomy-shade-3);
+}
+.iso-top {
+  fill: var(--anatomy-top);
+}
+.iso-solid[data-lit] > .iso-top {
+  fill: var(--anatomy-lit-top);
+}
+.iso-solid[data-lit] > .iso-shade {
+  fill: var(--anatomy-lit-shade);
+}
+.iso-solid[data-lit] > .iso-edge {
+  stroke: var(--anatomy-lit);
+}
+.iso-halo {
+  fill: var(--anatomy-halo);
+  stroke: none;
+  filter: blur(9px);
+  opacity: var(--anatomy-halo-opacity);
+  transform: translateY(3px);
+}
+.iso-line {
+  fill: none;
+  stroke: var(--anatomy-lo);
+  stroke-width: var(--anatomy-weight);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.iso-line[data-tone="hi"] {
+  stroke: var(--anatomy-hi);
+}
+.iso-line[data-tone="mid"] {
+  stroke: var(--anatomy-mid);
+}
+.iso-line[data-tone="lo"] {
+  stroke: var(--anatomy-lo);
+}
+.iso-line[data-tone="faint"] {
+  stroke: var(--anatomy-faint);
+}
+.iso-line[data-tone="lit"] {
+  stroke: var(--anatomy-lit);
+}
+.iso-line[data-dashed] {
+  stroke-dasharray: 3 3;
+}
+.iso-dots circle {
+  fill: var(--anatomy-dot);
+  stroke: none;
+  opacity: 0.32;
+}
+.iso-dots[data-tone="hi"] circle {
+  opacity: 0.85;
+}
+.iso-face-text {
+  fill: var(--anatomy-mid);
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.04em;
+}
+
+/* tokens: neutral until the machine decides what they are */
+.machine .coin {
+  opacity: 0;
+}
+.machine .coin .iso-top,
+.machine .coin .iso-shade,
+.machine .coin .iso-edge {
+  transition:
+    fill 160ms ease,
+    stroke 160ms ease;
+}
+.machine .coin[data-kind="credited"] .iso-top {
+  fill: var(--c-ok-solid);
+}
+.machine .coin[data-kind="credited"] .iso-shade {
+  fill: var(--c-ok-shade);
+}
+.machine .coin[data-kind="credited"] .iso-edge {
+  stroke: var(--c-ok-edge);
+}
+.machine .coin[data-kind="duplicate"] .iso-top {
+  fill: var(--c-warn-solid);
+}
+.machine .coin[data-kind="duplicate"] .iso-shade {
+  fill: var(--c-warn-shade);
+}
+.machine .coin[data-kind="duplicate"] .iso-edge {
+  stroke: var(--c-warn-edge);
+}
+.machine .coin[data-kind="ignored"] .iso-top {
+  fill: var(--c-grey);
+}
+.machine .coin[data-kind="ignored"] .iso-shade {
+  fill: var(--c-grey-shade);
+}
+.machine .coin[data-kind="ignored"] .iso-edge {
+  stroke: var(--c-grey-edge);
+}
+
+.stub {
+  opacity: 0;
+}
+.stub[data-on] {
+  opacity: 1;
+  transform: none;
+}
+.stub[data-hit] .iso-edge {
+  stroke: var(--c-warn);
+}
+.stub .iso-edge {
+  transition: stroke 200ms ease;
+}
+.flap {
+  transition: opacity 180ms ease;
+}
+.flap[data-open="0"] {
+  opacity: 0;
+}
+#flaps[data-closed] .flap[data-open="0"] {
+  opacity: 1;
+}
+#flaps[data-closed] .flap[data-open="1"] {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .machine .coin *,
+  .machine .stub,
+  .machine .stub *,
+  .machine .flap {
+    transition: none !important;
+  }
+}
