@@ -64,7 +64,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     usdcMint: n.usdcMint,
     apiKey: required(env, "HELIUS_API_KEY"),
     wallet,
-    ata: deriveAta(wallet, n.usdcMint),
+    ata: env.WATCH_TOKEN_ACCOUNT || deriveAta(wallet, n.usdcMint),
     commitment,
     dbPath: env.DB_PATH ?? "./deposits.db",
   };
