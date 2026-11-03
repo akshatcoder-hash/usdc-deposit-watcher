@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { advanceCursor, creditDeposit } from "./ledger.ts";
-import { logEvent } from "./log.ts";
+import { publishTx } from "./events.ts";
 import { parseDeposit } from "./parse.ts";
 import type { CreditResult, NormalizedTx, Source } from "./types.ts";
 
@@ -17,11 +17,11 @@ export async function handleTx(deps: PipelineDeps, tx: NormalizedTx, source: Sou
   const deposit = parseDeposit(tx, deps.account, deps.mint);
   if (!deposit) {
     advanceCursor(deps.db, tx.slot);
-    logEvent({ source, signature: tx.signature, slot: tx.slot, action: "ignored" });
+    publishTx({ source, signature: tx.signature, slot: tx.slot, action: "ignored" });
     return "ignored";
   }
   deposit.blockTime = (await deps.fetchBlockTime?.(tx.slot).catch(() => null)) ?? null;
   const result = creditDeposit(deps.db, deposit, source);
-  logEvent({ source, signature: tx.signature, slot: tx.slot, action: result, amount: (Number(deposit.amount) / 1e6).toFixed(6) });
+  publishTx({ source, signature: tx.signature, slot: tx.slot, action: result, amount: (Number(deposit.amount) / 1e6).toFixed(6) });
   return result;
 }

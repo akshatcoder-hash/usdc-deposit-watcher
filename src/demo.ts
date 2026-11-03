@@ -6,6 +6,7 @@ import { startWatcher } from "./watcher.ts";
 const killArg = process.argv.find((a) => a.startsWith("--kill-after="));
 const killAfterSec = killArg ? Number(killArg.split("=")[1]) : null;
 
+const DROP_HOLD_MS = Number(process.env.DROP_HOLD_SECONDS ?? 20) * 1000;
 const cfg = loadConfig();
 const db = openDb(cfg.dbPath);
 
@@ -16,8 +17,8 @@ const watcher = startWatcher(cfg, db);
 
 if (killAfterSec !== null) {
   setTimeout(() => {
-    watcher.dropConnection();
-    logInfo("stream is down. send a deposit now; it will be credited on reconnect");
+    watcher.dropConnection(DROP_HOLD_MS);
+    logInfo(`stream is down for ${DROP_HOLD_MS / 1000}s. send a deposit now; it will be credited on reconnect`);
   }, killAfterSec * 1000);
 }
 

@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>usdc-deposit-watcher</title>
+<style>
+  :root {
+    --bg: #0b0d10; --panel: #11141a; --line: #222831; --text: #e8eaed; --muted: #7b8591;
+    --green: #3ddc97; --amber: #f5b942; --grey: #6b7280; --red: #ff6b6b;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  main { max-width: 1240px; margin: 0 auto; padding: 56px 40px 72px; }
+
+  header { display: flex; justify-content: space-between; align-items: center; }
+  .brand { font-family: var(--mono); font-size: 18px; color: var(--muted); }
+  .brand b { color: var(--text); font-weight: 500; }
+  .net { margin-left: 14px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; }
+
+  .pill { display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 999px;
+          border: 1px solid var(--line); background: var(--panel); font-family: var(--mono); font-size: 17px; }
+  .pill i { width: 10px; height: 10px; border-radius: 50%; background: var(--grey); }
+  .pill.live i { background: var(--green); box-shadow: 0 0 0 0 rgba(61,220,151,.6); animation: pulse 2s infinite; }
+  .pill.dropped { color: var(--red); border-color: rgba(255,107,107,.4); }
+  .pill.dropped i { background: var(--red); }
+  .pill.replaying { color: var(--amber); border-color: rgba(245,185,66,.4); }
+  .pill.replaying i { background: var(--amber); animation: pulse 1s infinite; }
+  @keyframes pulse { 70% { box-shadow: 0 0 0 10px rgba(61,220,151,0); } 100% { box-shadow: 0 0 0 0 rgba(61,220,151,0); } }
+
+  .balance { margin-top: 64px; }
+  .label { font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .amount { margin-top: 8px; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 128px;
+            line-height: 1; letter-spacing: -.02em; display: flex; align-items: baseline; gap: 20px; }
+  .amount small { font-size: 28px; color: var(--muted); letter-spacing: 0; }
+  .amount.bump { animation: bump .7s ease-out; }
+  @keyframes bump { 0% { color: var(--green); } 100% { color: var(--text); } }
+  .wallet { margin-top: 14px; font-family: var(--mono); font-size: 15px; color: var(--muted); }
+
+  .flow { position: relative; height: 230px; margin-top: 72px; }
+  .track { position: absolute; top: 50%; height: 2px; background: var(--line); }
+  .node { position: absolute; top: 50%; width: 270px; height: 112px; margin-top: -56px; border: 1px solid var(--line);
+          border-radius: 14px; background: var(--panel); display: flex; flex-direction: column;
+          align-items: center; justify-content: center; gap: 6px; transition: border-color .3s, box-shadow .3s; }
+  .node strong { font-family: var(--mono); font-size: 22px; font-weight: 500; }
+  .node span { font-size: 13px; color: var(--muted); }
+  #n-stream { left: 0; } #n-credit { left: 50%; margin-left: -135px; } #n-ledger { right: 0; }
+  .node.flash-green { border-color: var(--green); box-shadow: 0 0 40px rgba(61,220,151,.25); }
+  .node.flash-amber { border-color: var(--amber); box-shadow: 0 0 40px rgba(245,185,66,.2); }
+  .tag { position: absolute; left: 50%; top: 4px; transform: translateX(-50%); font-family: var(--mono); font-size: 15px;
+         color: var(--amber); opacity: 0; white-space: nowrap; pointer-events: none; }
+  .dot { position: absolute; top: 50%; left: 0; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; opacity: 0; }
+  .dot.credited { background: var(--green); box-shadow: 0 0 22px var(--green); }
+  .dot.duplicate { background: var(--amber); box-shadow: 0 0 22px var(--amber); }
+  .dot.ignored { background: var(--grey); }
+
+  .controls { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
+  button { font-family: var(--mono); font-size: 16px; padding: 12px 22px; border-radius: 10px; cursor: pointer;
+           border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { opacity: .35; cursor: default; }
+  button.ghost { background: transparent; color: var(--muted); }
+
+  table { width: 100%; margin-top: 48px; border-collapse: collapse; font-family: var(--mono); font-size: 18px; }
+  th { text-align: left; font: 500 13px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+       padding: 0 0 14px; border-bottom: 1px solid var(--line); }
+  td { padding: 15px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th.r, td.r { text-align: right; }
+  td a { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--muted); }
+  td a:hover { color: var(--green); }
+  .muted { color: var(--muted); }
+  .act { font-size: 15px; }
+  .act.credited { color: var(--green); } .act.duplicate { color: var(--amber); } .act.ignored { color: var(--grey); }
+  tr.new td { animation: rowin .6s ease-out; }
+  @keyframes rowin { from { background: rgba(255,255,255,.07); } to { background: transparent; } }
+  .empty { padding: 28px 0; color: var(--muted); font-family: var(--sans); font-size: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand"><b>usdc-deposit-watcher</b><span class="net" id="net">-</span></div>
+    <div class="pill" id="pill"><i></i><span id="pill-text">connecting</span></div>
+  </header>
+
+  <section class="balance">
+    <div class="label">Balance</div>
+    <div class="amount" id="amount"><span id="amount-n">0.000000</span><small>USDC</small></div>
+    <div class="wallet" id="wallet"></div>
+  </section>
+
+  <section class="flow" id="flow">
+    <div class="track" id="track1"></div>
+    <div class="track" id="track2"></div>
+    <div class="node" id="n-stream"><strong>LaserStream</strong><span>gRPC subscription</span></div>
+    <div class="node" id="n-credit"><strong>creditDeposit()</strong><span>unique (signature, account)</span></div>
+    <div class="node" id="n-ledger"><strong>Ledger (SQLite)</strong><span>deposits, balances, cursor</span></div>
+    <div class="tag" id="tag">duplicate, skipped</div>
+  </section>
+  <div class="controls">
+    <button class="ghost" id="reconnect" hidden>Reconnect now</button>
+    <button id="drop" disabled>Drop stream</button>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:130px">Time</th><th style="width:130px">Source</th><th>Signature</th><th class="r" style="width:190px">Amount</th><th class="r" style="width:150px">Action</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="empty" id="empty">No events yet. Send USDC to the watched wallet.</div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const flow = $("flow");
+let explorer = { base: "https://explorer.solana.com/tx/", suffix: "" };
+let balance = 0, latestBalance = null, inFlight = 0, nextFree = 0, countdown = null;
+
+// Positions are measured from the real nodes, so the dots follow the layout at any width.
+function geometry() {
+  const f = flow.getBoundingClientRect();
+  const r = (id) => { const b = $(id).getBoundingClientRect(); return { l: b.left - f.left, r: b.right - f.left }; };
+  const s = r("n-stream"), c = r("n-credit"), l = r("n-ledger");
+  for (const [id, a, b] of [["track1", s.r, c.l], ["track2", c.r, l.l]]) {
+    $(id).style.left = a + "px"; $(id).style.width = (b - a) + "px";
+  }
+  return { x0: s.r, x1: c.l, x2: l.l + 40 };
+}
+
+function flash(id, cls, ms = 900) {
+  const el = $(id); el.classList.add(cls); setTimeout(() => el.classList.remove(cls), ms);
+}
+
+function launchDot(e) {
+  const g = geometry();
+  const dot = document.createElement("div");
+  dot.className = "dot " + e.action;
+  flow.appendChild(dot);
+  const at = (x, o, extra = {}) => ({ transform: `translateX(${x}px)`, offset: o, ...extra });
+  let frames, ms;
+  if (e.action === "credited") {
+    ms = 2400;
+    frames = [at(g.x0, 0, { opacity: 0 }), at(g.x0 + 10, .05, { opacity: 1 }), at(g.x1, .42, { opacity: 1 }),
+              at(g.x1 + 6, .5, { opacity: 1 }), at(g.x2, .88, { opacity: 1 }), at(g.x2 + 14, 1, { opacity: 0 })];
+    setTimeout(() => flash("n-credit", "flash-green", 500), ms * .42);
+    setTimeout(() => { flash("n-ledger", "flash-green", 1000); landCredit(); }, ms * .88);
+  } else if (e.action === "duplicate") {
+    ms = 2400;
+    frames = [at(g.x0, 0, { opacity: 0 }), at(g.x0 + 10, .06, { opacity: 1 }), at(g.x1, .5, { opacity: 1 }),
+              at(g.x1 + 4, .75, { opacity: 1 }), at(g.x1 + 4, 1, { opacity: 0 })];
+    setTimeout(() => {
+      flash("n-credit", "flash-amber", 1500);
+      $("tag").animate([{ opacity: 0, top: "14px" }, { opacity: 1, top: "-6px", offset: .2 }, { opacity: 1, top: "-6px", offset: .8 }, { opacity: 0, top: "-6px" }],
+                       { duration: 1800, fill: "forwards" });
+    }, ms * .5);
+  } else {
+    ms = 2000;
+    const mid = g.x0 + (g.x1 - g.x0) * .45;
+    frames = [at(g.x0, 0, { opacity: 0 }), at(g.x0 + 10, .08, { opacity: .9 }), at(mid, 1, { opacity: 0 })];
+  }
+  dot.animate(frames, { duration: ms, easing: "ease-in-out", fill: "forwards" }).onfinish = () => dot.remove();
+}
+
+function landCredit() {
+  inFlight = Math.max(0, inFlight - 1);
+  if (inFlight === 0 && latestBalance !== null) setBalance(latestBalance);
+}
+
+function setBalance(v) {
+  const from = balance, to = Number(v), t0 = performance.now();
+  balance = to;
+  if (from === to) { $("amount-n").textContent = to.toFixed(6); return; }
+  $("amount").classList.remove("bump"); void $("amount").offsetWidth; $("amount").classList.add("bump");
+  (function tick(now) {
+    const k = Math.min(1, (now - t0) / 700);
+    $("amount-n").textContent = (from + (to - from) * (1 - Math.pow(1 - k, 3))).toFixed(6);
+    if (k < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+const hhmmss = (t) => new Date(t).toLocaleTimeString("en-GB");
+const shortSig = (s) => s.slice(0, 4) + "…" + s.slice(-4);
+
+function addRow(e) {
+  $("empty").hidden = true;
+  const tr = document.createElement("tr");
+  tr.className = "new";
+  const amt = e.action === "ignored" ? "-" : "+" + Number(e.amount).toFixed(6);
+  tr.innerHTML = `<td class="muted">${hhmmss(e.t)}</td><td>${e.source}</td>
+    <td><a target="_blank" rel="noreferrer" href="${explorer.base}${e.signature}${explorer.suffix}">${shortSig(e.signature)}</a></td>
+    <td class="r ${e.action === "ignored" ? "muted" : ""}">${amt}</td><td class="r act ${e.action}">${e.action}</td>`;
+  $("rows").prepend(tr);
+  while ($("rows").children.length > 10) $("rows").lastChild.remove();
+}
+
+// Events can arrive in a burst (a replay). Space the dots out so each one is visible.
+function play(e) {
+  const now = performance.now();
+  const start = Math.max(now, nextFree);
+  nextFree = start + 450;
+  if (e.action === "credited") inFlight++;
+  setTimeout(() => { addRow(e); launchDot(e); }, start - now);
+}
+
+function showStatus(s) {
+  clearInterval(countdown);
+  const pill = $("pill");
+  pill.className = "pill " + s.state;
+  $("drop").disabled = s.state !== "live";
+  $("reconnect").hidden = s.state !== "dropped";
+  if (s.state === "live") $("pill-text").textContent = "live";
+  else if (s.state === "replaying") $("pill-text").textContent = "replaying from slot " + s.fromSlot.toLocaleString("en-US");
+  else {
+    const draw = () => {
+      const left = Math.max(0, Math.ceil((s.reconnectAt - Date.now()) / 1000));
+      $("pill-text").textContent = left > 0 ? `dropped, reconnecting in ${left}s` : "dropped, reconnecting";
+    };
+    draw(); countdown = setInterval(draw, 250);
+  }
+}
+
+const es = new EventSource("/events");
+es.addEventListener("snapshot", (m) => {
+  const d = JSON.parse(m.data);
+  explorer = { base: d.explorerBase, suffix: d.explorerSuffix };
+  $("net").textContent = d.network;
+  $("wallet").textContent = "watching " + d.wallet + "  (USDC account " + d.account.slice(0, 4) + "…" + d.account.slice(-4) + ")";
+  balance = Number(d.balance); latestBalance = balance; $("amount-n").textContent = balance.toFixed(6);
+  $("rows").innerHTML = ""; $("empty").hidden = d.recent.length > 0;
+  d.recent.forEach(addRow);
+  document.querySelectorAll("tr.new").forEach((r) => r.classList.remove("new"));
+  showStatus(d.status);
+});
+es.addEventListener("tx", (m) => play(JSON.parse(m.data)));
+es.addEventListener("balance", (m) => { latestBalance = Number(JSON.parse(m.data).usdc); if (inFlight === 0) setBalance(latestBalance); });
+es.addEventListener("status", (m) => showStatus(JSON.parse(m.data)));
+es.onerror = () => { $("pill").className = "pill dropped"; $("pill-text").textContent = "dashboard server unreachable"; };
+
+$("drop").onclick = () => fetch("/drop", { method: "POST" });
+$("reconnect").onclick = () => fetch("/reconnect", { method: "POST" });
+addEventListener("resize", geometry);
+geometry();
+</script>
+</body>
+</html>

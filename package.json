@@ -8,6 +8,7 @@
   "scripts": {
     "start": "bun run src/demo.ts",
     "demo": "bun run src/demo.ts",
+    "dashboard": "bun run src/dashboard.ts",
     "demo:kill": "bun run src/demo.ts --kill-after=20",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

@@ -1,6 +1,7 @@
 import { CommitmentLevel, LaserstreamClient, subscribe, type LaserstreamConfig, type StreamHandle } from "helius-laserstream";
 import type { Config } from "./config.ts";
 import { advanceCursor, getCursor } from "./ledger.ts";
+import { publishStatus } from "./events.ts";
 import { logInfo } from "./log.ts";
 import { fromStreamUpdate, type StreamUpdate } from "./parse.ts";
 import { handleTx, type PipelineDeps } from "./pipeline.ts";
@@ -23,7 +24,9 @@ async function fetchBlockTime(rpcUrl: string, apiKey: string, slot: number): Pro
 
 export interface Watcher {
   stop(): void;
-  dropConnection(): void;
+  // Cancels the stream and keeps it down for holdMs, so a deposit can land while it is disconnected.
+  dropConnection(holdMs: number): void;
+  reconnectNow(): void;
 }
 
 // Keeps one subscription alive. Each (re)connect resumes from the last slot
@@ -40,6 +43,8 @@ export function startWatcher(cfg: Config, db: Database): Watcher {
   let stopped = false;
   let handle: StreamHandle | null = null;
   let closeCurrent: (() => void) | null = null;
+  let holdUntil = 0;
+  let wake: (() => void) | null = null;
 
   async function resumeSlot(client: LaserstreamClient): Promise<number> {
     const saved = getCursor(db);
@@ -66,6 +71,10 @@ export function startWatcher(cfg: Config, db: Database): Watcher {
     while (!stopped) {
       try {
         const fromSlot = await resumeSlot(client);
+        const level = cfg.commitment === "finalized" ? CommitmentLevel.FINALIZED : CommitmentLevel.CONFIRMED;
+        const head = Number((await client.getSlot(level)).slot);
+        let live = false;
+        publishStatus({ state: "replaying", fromSlot });
         logInfo("subscribing", { fromSlot, commitment: cfg.commitment, account: cfg.ata });
         const closed = new Promise<string>((resolve) => {
           closeCurrent = () => resolve("dropped");
@@ -75,9 +84,9 @@ export function startWatcher(cfg: Config, db: Database): Watcher {
               transactions: {
                 deposits: { accountInclude: [cfg.ata], accountExclude: [], accountRequired: [], vote: false, failed: false },
               },
-              commitment: cfg.commitment === "finalized" ? CommitmentLevel.FINALIZED : CommitmentLevel.CONFIRMED,
+              commitment: level,
               accounts: {},
-              slots: {},
+              slots: { head: { filterByCommitment: true } },
               transactionsStatus: {},
               blocks: {},
               blocksMeta: {},
@@ -86,11 +95,15 @@ export function startWatcher(cfg: Config, db: Database): Watcher {
               fromSlot,
             },
             async (update) => {
-              const tx = fromStreamUpdate(update as StreamUpdate);
-              if (tx) {
+              // Slot updates arrive in order. Once one reaches the head we saw at connect time, replay is done.
+              if (update.slot && !live && Number(String(update.slot.slot)) >= head) {
+                live = true;
                 attempt = 0;
-                await handleTx(deps, tx, "stream");
+                publishStatus({ state: "live" });
+                logInfo("caught up, live", { head });
               }
+              const tx = fromStreamUpdate(update as StreamUpdate);
+              if (tx) await handleTx(deps, tx, "stream");
             },
             async (err) => resolve(`error: ${err.message}`),
           ).then((h) => {
@@ -105,9 +118,17 @@ export function startWatcher(cfg: Config, db: Database): Watcher {
       } catch (err) {
         logInfo("resume failed", { error: (err as Error).message });
       }
-      const wait = backoffMs(attempt++);
+      const wait = Math.max(backoffMs(attempt++), holdUntil - Date.now());
+      publishStatus({ state: "dropped", reconnectAt: Date.now() + wait });
       logInfo("reconnecting", { inMs: wait });
-      await new Promise((r) => setTimeout(r, wait));
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, wait);
+        wake = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+      });
+      wake = null;
     }
   }
 
@@ -118,10 +139,15 @@ export function startWatcher(cfg: Config, db: Database): Watcher {
       handle?.cancel();
       closeCurrent?.();
     },
-    dropConnection() {
-      logInfo("kill flag: dropping the stream now");
+    dropConnection(holdMs) {
+      logInfo("dropping the stream now", { holdMs });
+      holdUntil = Date.now() + holdMs;
       handle?.cancel();
       closeCurrent?.();
+    },
+    reconnectNow() {
+      holdUntil = 0;
+      wake?.();
     },
   };
 }
